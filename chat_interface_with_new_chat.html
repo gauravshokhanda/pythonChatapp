@@ -1,0 +1,126 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Real-Time Chat</title>
+  <style>
+    body { font-family: Arial; display: flex; gap: 40px; padding: 20px; }
+    .chat-box { width: 45%; border: 1px solid #ccc; padding: 10px; }
+    .messages { border: 1px solid #ddd; height: 200px; overflow-y: scroll; margin-top: 10px; padding: 5px; }
+    .chat-partners { margin-top: 10px; }
+    .chat-partners div { cursor: pointer; color: blue; }
+    .message { margin-bottom: 5px; }
+  </style>
+</head>
+<body>
+
+<div class="chat-box">
+  <h2>Chat App</h2>
+  <label>User ID: <input id="userIdInput" type="text" /></label>
+  <button onclick="connectSocket()">Connect</button>
+  <br/><br/>
+  <div><strong>Chat Partners:</strong></div>
+  <div class="chat-partners" id="partnersList"></div>
+
+  <hr/>
+
+  <div>
+    <label>Start New Chat with User ID:</label>
+    <input type="text" id="newChatUserId" />
+    <button onclick="startNewChat()">Start Chat</button>
+  </div>
+
+  <hr/>
+  <div><strong id="chatWith"></strong></div>
+  <div class="messages" id="chatMessages"></div>
+
+  <input type="text" id="messageInput" placeholder="Type a message" style="width:80%;" />
+  <button onclick="sendMessage()">Send</button>
+</div>
+
+<script>
+  let socket;
+  let userId;
+  let selectedPartnerId;
+  let conversationMap = {};
+
+  function connectSocket() {
+    userId = document.getElementById("userIdInput").value;
+    socket = new WebSocket(`ws://localhost:8000/ws/${userId}`);
+
+    socket.onopen = () => {
+      console.log("Connected to server.");
+      fetchPartners();
+    };
+
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      const msgBox = document.getElementById("chatMessages");
+
+      if (selectedPartnerId === data.from || selectedPartnerId === data.to) {
+        const side = data.from === userId ? "You" : data.from;
+        msgBox.innerHTML += `<div class="message"><strong>${side}:</strong> ${data.message}</div>`;
+        msgBox.scrollTop = msgBox.scrollHeight;
+      }
+
+      fetchPartners(); // Refresh list
+    };
+  }
+
+  function fetchPartners() {
+    fetch(`http://localhost:8000/partners/${userId}`)
+      .then(res => res.json())
+      .then(data => {
+        const list = document.getElementById("partnersList");
+        list.innerHTML = "";
+        data.forEach(partner => {
+          const div = document.createElement("div");
+          div.textContent = `${partner.username} (id: ${partner.user_id})`;
+          div.onclick = () => loadChat(partner.user_id);
+          list.appendChild(div);
+        });
+      });
+  }
+
+  function loadChat(partnerId) {
+    selectedPartnerId = partnerId;
+    document.getElementById("chatWith").innerText = `Chat with ${partnerId}`;
+    const msgBox = document.getElementById("chatMessages");
+    msgBox.innerHTML = "";
+
+    fetch(`http://localhost:8000/conversation/${userId}/${partnerId}`)
+      .then(res => res.json())
+      .then(data => {
+        data.forEach(msg => {
+          const side = msg.sender_id == userId ? "You" : msg.sender_id;
+          msgBox.innerHTML += `<div class="message"><strong>${side}:</strong> ${msg.message}</div>`;
+        });
+        msgBox.scrollTop = msgBox.scrollHeight;
+      });
+  }
+
+  function sendMessage() {
+    const content = document.getElementById("messageInput").value;
+    if (!content || !selectedPartnerId) return;
+
+    socket.send(JSON.stringify({
+      type: "message",
+      to: selectedPartnerId,
+      message: content
+    }));
+
+    document.getElementById("messageInput").value = "";
+  }
+
+  function startNewChat() {
+    const newId = document.getElementById("newChatUserId").value;
+    if (newId) {
+      selectedPartnerId = newId;
+      document.getElementById("chatWith").innerText = `Chat with ${newId}`;
+      document.getElementById("chatMessages").innerHTML = "";
+    }
+  }
+</script>
+
+</body>
+</html>

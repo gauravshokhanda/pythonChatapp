@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Real-Time Chat</title>
+    <style>
+      #chat-box div {
+        margin: 5px 0;
+        padding: 5px;
+        border-bottom: 1px solid #ddd;
+      }
+      .status {
+        font-size: 10px;
+        color: gray;
+        margin-left: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Chat App</h2>
+    <label>User ID:</label>
+    <input id="user_id" type="number" placeholder="Enter your user ID" />
+    <button onclick="connect()">Connect</button>
+
+    <hr />
+
+    <label>Chat Partners:</label>
+    <ul id="partners"></ul>
+
+    <hr />
+
+    <div id="chat-section" style="display: none">
+      <h3>Chat with <span id="chatWith"></span></h3>
+      <div
+        id="chat-box"
+        style="border: 1px solid #ccc; height: 200px; overflow-y: auto"
+      ></div>
+      <input id="message-input" type="text" placeholder="Type a message" />
+      <button onclick="sendMessage()">Send</button>
+    </div>
+
+    <script>
+      let socket;
+      let userId;
+      let receiverId;
+
+      async function connect() {
+        userId = document.getElementById("user_id").value;
+        if (!userId) return alert("Enter user ID");
+
+        socket = new WebSocket(`ws://localhost:8000/ws/${userId}`);
+
+        socket.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+
+          if (data.type === "seen") return; // skip if it's seen ack
+
+          const div = document.createElement("div");
+          div.innerHTML = `<b>${data.from}</b>: ${
+            data.message
+          } <span class="status">${data.status || "sent"}</span>`;
+          document.getElementById("chat-box").appendChild(div);
+          scrollToBottom();
+        };
+
+        // Fetch partners
+        const res = await fetch(`http://localhost:8000/partners/${userId}`);
+        const data = await res.json();
+        const partners = document.getElementById("partners");
+        partners.innerHTML = "";
+        data.forEach((user) => {
+          const li = document.createElement("li");
+          li.innerText = user.username + " (id: " + user.user_id + ")";
+          li.style.cursor = "pointer";
+          li.onclick = () => loadChat(user.user_id, user.username);
+          partners.appendChild(li);
+        });
+      }
+
+      async function loadChat(partnerId, name) {
+        receiverId = partnerId;
+        document.getElementById("chatWith").innerText = name;
+        document.getElementById("chat-section").style.display = "block";
+
+        const res = await fetch(
+          `http://localhost:8000/conversation/${userId}/${partnerId}`
+        );
+        const messages = await res.json();
+        const chatBox = document.getElementById("chat-box");
+        chatBox.innerHTML = "";
+
+        messages.forEach((msg) => {
+          const div = document.createElement("div");
+          div.innerHTML = `<b>${msg.sender_id}</b>: ${msg.message} <span class="status">${msg.status}</span>`;
+          chatBox.appendChild(div);
+        });
+
+        scrollToBottom();
+
+        // Mark last message seen (if sent to me)
+        const last = messages[messages.length - 1];
+        if (last && last.receiver_id == userId && last.status !== "seen") {
+          socket.send(
+            JSON.stringify({
+              type: "seen",
+              message_id: last.message_id,
+            })
+          );
+        }
+      }
+
+      function sendMessage() {
+        const input = document.getElementById("message-input");
+        const message = {
+          type: "message",
+          to: parseInt(receiverId),
+          message: input.value,
+        };
+        socket.send(JSON.stringify(message));
+        input.value = "";
+      }
+
+      function scrollToBottom() {
+        const chatBox = document.getElementById("chat-box");
+        chatBox.scrollTop = chatBox.scrollHeight;
+      }
+    </script>
+  </body>
+</html>
