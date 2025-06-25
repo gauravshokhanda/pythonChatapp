@@ -155,6 +155,8 @@
 
       function connectSocket() {
         userId = document.getElementById("userIdInput").value;
+        if (!userId) return alert("Enter your user ID first");
+
         socket = new WebSocket(`ws://localhost:8000/ws/${userId}`);
 
         socket.onopen = () => {
@@ -164,19 +166,24 @@
 
         socket.onmessage = (event) => {
           const data = JSON.parse(event.data);
+          if (!data.message || !data.from || !data.to) return;
+
           const msgBox = document.getElementById("chatMessages");
 
           if (
-            selectedPartnerId === data.from ||
-            selectedPartnerId === data.to
+            (data.from == userId && data.to == selectedPartnerId) ||
+            (data.to == userId && data.from == selectedPartnerId)
           ) {
-            const side = data.from === userId ? "You" : data.from;
-            const sideClass = data.from === userId ? "you" : "them";
-            msgBox.innerHTML += `<div class="message ${sideClass}"><strong>${side}:</strong> ${data.message}</div>`;
+            const side = data.from == userId ? "You" : `User ${data.from}`;
+            const sideClass = data.from == userId ? "you" : "them";
+            const div = document.createElement("div");
+            div.className = `message ${sideClass}`;
+            div.innerHTML = `<strong>${side}:</strong> ${data.message}`;
+            msgBox.appendChild(div);
             msgBox.scrollTop = msgBox.scrollHeight;
           }
 
-          fetchPartners();
+          fetchPartners(); // optional auto refresh
         };
       }
 
@@ -207,27 +214,40 @@
           .then((res) => res.json())
           .then((data) => {
             data.forEach((msg) => {
-              const side = msg.sender_id == userId ? "You" : msg.sender_id;
+              const side =
+                msg.sender_id == userId ? "You" : `User ${msg.sender_id}`;
               const sideClass = msg.sender_id == userId ? "you" : "them";
-              msgBox.innerHTML += `<div class="message ${sideClass}"><strong>${side}:</strong> ${msg.message}</div>`;
+              const div = document.createElement("div");
+              div.className = `message ${sideClass}`;
+              div.innerHTML = `<strong>${side}:</strong> ${msg.message}`;
+              msgBox.appendChild(div);
             });
             msgBox.scrollTop = msgBox.scrollHeight;
           });
       }
 
       function sendMessage() {
-        const content = document.getElementById("messageInput").value;
-        if (!content || !selectedPartnerId) return;
+        const input = document.getElementById("messageInput");
+        const text = input.value.trim();
+        if (!text || !selectedPartnerId) return;
 
-        socket.send(
-          JSON.stringify({
-            type: "message",
-            to: selectedPartnerId,
-            message: content,
-          })
-        );
+        const payload = {
+          type: "message",
+          to: parseInt(selectedPartnerId),
+          message: text,
+        };
 
-        document.getElementById("messageInput").value = "";
+        socket.send(JSON.stringify(payload));
+
+        // Add it immediately to the sender UI
+        // const msgBox = document.getElementById("chatMessages");
+        // const div = document.createElement("div");
+        // div.className = "message you";
+        // div.innerHTML = `<strong>You:</strong> ${text}`;
+        // msgBox.appendChild(div);
+        // msgBox.scrollTop = msgBox.scrollHeight;
+
+        input.value = "";
       }
 
       function startNewChat() {

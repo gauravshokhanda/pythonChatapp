@@ -38,13 +38,14 @@ def websocket_app(app):
             online_users.discard(user_id)
 
 async def handle_message(data, sender_id):
+    sender_id = str(sender_id)  # Ensure it's a string
     receiver_id = str(data.get("to"))
     content = data.get("message")
 
     # Create or get conversation ID
     conversation_id = get_or_create_conversation(sender_id, receiver_id)
 
-    # Save message
+    # Save message to DB
     msg_id = create_message({
         "conversation_id": conversation_id,
         "sender_id": sender_id,
@@ -68,6 +69,6 @@ async def handle_message(data, sender_id):
         await active_connections[receiver_id].send_json(message_data)
         update_message_status(msg_id, "delivered")
 
-    # Also send to sender (for real-time chat update)
+    # Also send to sender for real-time update in their own chat window
     if sender_id in active_connections:
         await active_connections[sender_id].send_json(message_data)
